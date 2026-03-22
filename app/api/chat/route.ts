@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       : "Aucun contexte trouvé.";
 
     // BIEN UTILISER getGenerativeModel ici
-    const chatModel = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+    const chatModel = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
     
     const prompt = `
       Tu es DocuChat. Réponds à la QUESTION en utilisant le CONTEXTE suivant.

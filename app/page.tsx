@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 
 // Type pour notre historique
 interface FileHistory {
@@ -273,7 +274,23 @@ export default function Home() {
                 ? "bg-blue-600 text-white rounded-tr-none" 
                 : "bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-tl-none"
               }`}>
-                {msg.text}
+                {msg.role === "user" ? (
+                  msg.text
+                ) : (
+                  <div className="space-y-3">
+                    <ReactMarkdown 
+                      components={{
+                        p: ({node, ...props}) => <p {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc ml-5 space-y-2 text-neutral-300" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal ml-5 space-y-2 text-neutral-300" {...props} />,
+                        li: ({node, ...props}) => <li {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold text-emerald-400" {...props} />,
+                      }}
+                    >
+                      {msg.text}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           ))}

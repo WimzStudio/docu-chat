@@ -1,52 +1,106 @@
-```markdown
-# 🚀 DocuChat - Assistant PDF Intelligent & Privé
+# 🚀 DocuChat - Assistant PDF Intelligent & Agentique (RAG)
 
-**DocuChat** est une plateforme SaaS de gestion de documents utilisant l'architecture **RAG** (Retrieval-Augmented Generation) pour discuter avec vos PDF en toute confidentialité.
+**DocuChat** est une plateforme SaaS de pointe utilisant l'architecture **RAG** (Retrieval-Augmented Generation) optimisée pour la gamme **Gemini 3**. Elle permet d'indexer, de rechercher et de raisonner sur vos documents PDF avec une précision inédite.
 
-## ✨ Fonctionnalités clés
-- 🔐 **Espace Personnel** : Authentification sécurisée par Magic Link (Supabase Auth). Chaque utilisateur dispose de son propre espace de stockage privé.
-- 📂 **Gestion Multi-fichiers** : Historique complet des documents uploadés avec possibilité de suppression individuelle.
-- 🧠 **IA de Pointe** : Réponses générées par **Gemini 3.1 Flash Lite** et indexation vectorielle via **Gemini-embedding-2**.
-- 🔍 **Filtre de Recherche** : Possibilité de limiter la recherche à un document précis ou à l'ensemble de la bibliothèque.
-- 🛡️ **Sécurité Native** : Isolation totale des données via **Row Level Security (RLS)** de Supabase.
+## 🌐 Version Live
+
+Testez la démo ici : [https://doc-chat-degenwimz.vercel.app](https://www.google.com/search?q=https://doc-chat-degenwimz.vercel.app)
+
+## ⚠️ Confidentialité & Sécurité
+
+> [\!CAUTION]
+> **API Free Tier** : Les données traitées via le palier gratuit de Google AI Studio peuvent être utilisées pour l'entraînement des modèles.
+> **Données Sensibles** : Pour une confidentialité totale, utilisez un compte **Google Cloud Vertex AI** ou un plan **Pay-as-you-go** avec les modèles Gemini 3.1. Ne téléversez jamais de documents hautement confidentiels sur la version de test.
+
+## ✨ Intelligence & Modèles (Gamme 2026)
+
+L'application est conçue pour être modulaire et supporte les dernières avancées de l'IA :
+
+### 🔹 Modèles de la Démo (Tiers Gratuit)
+
+  - **Raisonnement** : `gemini-3.1-flash-lite` (Le meilleur rapport vitesse/performance pour le chat fluide).
+  - **Indexation** : `gemini-embedding-2 (preview)` (Premier modèle multimodal capable de mapper texte et PDF dans un espace unifié).
+
+### 🔹 Options pour Utilisateurs Pro (Tiers Payant)
+
+Les utilisateurs possédant une clé API Premium peuvent configurer l'application pour utiliser :
+
+  - **`gemini-3.1-pro`** : Pour l'analyse de documents complexes, le codage agentique et les raisonnements de haut niveau.
+  - **`gemini-deep-research`** : Pour générer des rapports complets basés sur des centaines de sources documentaires.
+  - **`gemini-3-flash`** : Pour des traitements massifs de documents à ultra-faible latence.
 
 ## 🛠️ Stack Technique
-- **Frontend** : Next.js 16 (Turbopack), Tailwind CSS.
-- **Backend** : Next.js API Routes.
-- **Base de données** : Supabase + extension `pgvector`.
-- **Modèles IA** : Google Gemini API.
 
-## 🚀 Installation & Lancement
+  - **Framework** : Next.js 16 (App Router + Turbopack).
+  - **Base de données** : Supabase (PostgreSQL + `pgvector`).
+  - **Authentification** : Supabase Auth (Magic Link & Session persistante).
+  - **SDK IA** : Google Generative AI SDK (Optimisé pour Gemini 3.1).
 
-1. **Cloner le projet** :
-   ```bash
-   git clone [https://github.com/DegenWimz/docu-chat.git](https://github.com/DegenWimz/docu-chat.git)
-   cd docu-chat
-   ```
+-----
 
-2. **Installer les dépendances** :
-   ```bash
-   npm install
-   ```
+## 🚀 Guide de Déploiement Rapide
 
-3. **Configurer les variables d'environnement** :
-   Créez un fichier `.env.local` à la racine :
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=votre_url_supabase
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=votre_cle_anon
-   GOOGLE_GENERATIVE_AI_API_KEY=votre_cle_gemini
-   ```
+### 1\. Préparation Supabase
 
-4. **Lancer en mode développement** :
-   ```bash
-   npm run dev
-   ```
+Exécutez le script suivant dans votre **SQL Editor** :
 
-## 📜 Configuration Base de données
-Pour que la recherche vectorielle fonctionne, vous devez :
-1. Activer l'extension `vector` sur Supabase.
-2. Créer la table `documents` avec une colonne `embedding` de type `vector(768)`.
-3. Ajouter la fonction SQL `match_documents` pour la recherche de similarité cosinus.
+```sql
+-- Activation de l'IA Vectorielle
+create extension if not exists vector;
+
+-- Table des documents optimisée
+create table if not exists documents (
+  id bigint primary key generated always as identity,
+  content text,
+  metadata jsonb,
+  embedding vector(768), -- Dimension pour Gemini Embedding 2
+  user_id uuid references auth.users(id),
+  file_id uuid,
+  file_name text
+);
+
+-- RLS (Row Level Security)
+alter table documents enable row level security;
+create policy "User isolation" on documents for all using (auth.uid() = user_id);
+
+-- Fonction de recherche sémantique
+create or replace function match_documents (
+  query_embedding vector(768),
+  match_threshold float,
+  match_count int,
+  filter_user_id uuid,
+  filter_file_id uuid default null
+)
+returns table (id bigint, content text, metadata jsonb, similarity float)
+language plpgsql as $$
+begin
+  return query
+  select d.id, d.content, d.metadata, 1 - (d.embedding <=> query_embedding) as similarity
+  from documents d
+  where 1 - (d.embedding <=> query_embedding) > match_threshold
+  and d.user_id = filter_user_id
+  and (filter_file_id is null or d.file_id = filter_file_id)
+  order by similarity desc limit match_count;
+end; $$;
 ```
 
----
+### 2\. Variables d'Environnement (`.env.local`)
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://votre-projet.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=votre_cle_publique
+GOOGLE_GENERATIVE_AI_API_KEY=votre_cle_gemini_3
+```
+
+### 3\. Installation
+
+```bash
+npm install
+npm run dev
+```
+
+-----
+
+## 📄 Licence
+
+Projet distribué sous licence MIT. Libre à vous de l'adapter pour des usages professionnels ou de recherche.

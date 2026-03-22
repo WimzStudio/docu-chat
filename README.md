@@ -103,4 +103,4 @@ npm run dev
 
 ## 📄 Licence
 
-Projet distribué sous licence MIT. Libre à vous de l'adapter pour des usages professionnels ou de recherche.
+Projet distribué sous licence MIT. Libre à vous de l'adapter pour des usages professionnels ou de recherche..

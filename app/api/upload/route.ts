@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       
     } else if (file.type.startsWith("image/")) {
       // Cas 2 : C'est une Image, on demande à Gemini Vision de la lire
-      const visionModel = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+      const visionModel = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
       const base64Data = Buffer.from(buffer).toString("base64");
       
       const prompt = "Décris cette image en détail. Si elle contient du texte (capture d'écran, document scanné, facture...), retranscris-le le plus fidèlement possible.";

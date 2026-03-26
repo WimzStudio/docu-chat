@@ -180,42 +180,38 @@ export default function Home() {
     if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
-    setUploadMessage(`Analyse de ${selectedFiles.length} fichier(s)...`);
-
-    let hasError = false;
-    let errorMessage = "";
+    setUploadMessage(`Préparation de ${selectedFiles.length} fichier(s)...`);
 
     try {
       for (const file of selectedFiles) {
+        // ASTUCE : On force la lecture du fichier en local. 
+        // Si c'est un fichier OneDrive "online-only", cela déclenche souvent 
+        // l'appel système de téléchargement automatique par Windows/macOS.
+        const arrayBuffer = await file.arrayBuffer();
+        
+        if (arrayBuffer.byteLength === 0) {
+          throw new Error(`Le fichier ${file.name} n'a pas pu être récupéré depuis votre Cloud.`);
+        }
+
         const formData = new FormData();
-        formData.append("file", file);
+        // On recrée un fichier à partir du buffer pour être sûr qu'il est "plein"
+        const blob = new Blob([arrayBuffer], { type: file.type });
+        formData.append("file", blob, file.name);
+        
         if (selectedSpaceId) formData.append("spaceId", selectedSpaceId);
         
         const response = await fetch("/api/upload", { method: "POST", body: formData });
         
         if (!response.ok) {
-          hasError = true;
-          // On tente de lire le message d'erreur renvoyé par le backend
           const errText = await response.text();
-          try {
-            const errJson = JSON.parse(errText);
-            errorMessage = errJson.error || `Erreur pour le fichier ${file.name}`;
-          } catch {
-            // Si Vercel coupe la requête (ex: fichier trop lourd > 4.5MB), ce n'est pas du JSON
-            errorMessage = `Le fichier ${file.name} est trop lourd ou invalide.`;
-          }
-          break; // On stoppe la boucle au premier échec
+          throw new Error(errText || "Erreur serveur");
         }
       }
       
-      if (hasError) {
-        setUploadMessage(`❌ ${errorMessage}`);
-      } else {
-        setUploadMessage("✅ Fichiers mémorisés !");
-        fetchHistory(); 
-      }
-    } catch (e) {
-      setUploadMessage("❌ Erreur serveur lors de l'envoi");
+      setUploadMessage("✅ Fichiers synchronisés et mémorisés !");
+      fetchHistory(); 
+    } catch (e: any) {
+      setUploadMessage(`❌ ${e.message}`);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

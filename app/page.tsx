@@ -180,38 +180,50 @@ export default function Home() {
     if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
-    setUploadMessage(`Préparation de ${selectedFiles.length} fichier(s)...`);
+    setUploadMessage(`Synchronisation Cloud en cours...`);
 
     try {
       for (const file of selectedFiles) {
-        // ASTUCE : On force la lecture du fichier en local. 
-        // Si c'est un fichier OneDrive "online-only", cela déclenche souvent 
-        // l'appel système de téléchargement automatique par Windows/macOS.
-        const arrayBuffer = await file.arrayBuffer();
-        
-        if (arrayBuffer.byteLength === 0) {
-          throw new Error(`Le fichier ${file.name} n'a pas pu être récupéré depuis votre Cloud.`);
+        // 1. On force la synchronisation via FileReader (plus robuste pour OneDrive)
+        const content = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(file);
+        });
+
+        if (content.byteLength === 0) {
+          throw new Error(`Le fichier "${file.name}" est encore en ligne. Ouvrez-le une fois pour le synchroniser.`);
         }
 
+        // 2. Micro-pause (300ms) pour laisser l'OS gérer le flux de données
+        await new Promise(resolve => setTimeout(resolve, 300));
+
         const formData = new FormData();
-        // On recrée un fichier à partir du buffer pour être sûr qu'il est "plein"
-        const blob = new Blob([arrayBuffer], { type: file.type });
+        // On envoie le Blob créé à partir du contenu synchronisé
+        const blob = new Blob([content], { type: file.type });
         formData.append("file", blob, file.name);
         
-        if (selectedSpaceId) formData.append("spaceId", selectedSpaceId);
+        if (selectedSpaceId) {
+          formData.append("spaceId", selectedSpaceId);
+        }
         
-        const response = await fetch("/api/upload", { method: "POST", body: formData });
+        const response = await fetch("/api/upload", { 
+          method: "POST", 
+          body: formData 
+        });
         
         if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(errText || "Erreur serveur");
+          const errData = await response.json();
+          throw new Error(errData.error || "Erreur serveur");
         }
       }
       
-      setUploadMessage("✅ Fichiers synchronisés et mémorisés !");
+      setUploadMessage("✅ Tout est synchronisé !");
       fetchHistory(); 
     } catch (e: any) {
       setUploadMessage(`❌ ${e.message}`);
+      console.error("Détail upload:", e);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

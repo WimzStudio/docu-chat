@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { 
   Plus, 
   Send, 
@@ -16,7 +18,8 @@ import {
   MessageSquare,
   Sparkles,
   Pencil,
-  Check
+  Check,
+  Download // NOUVEAU: icône pour l'export
 } from 'lucide-react';
 
 interface FileHistory {
@@ -38,7 +41,7 @@ export default function Home() {
   const [files, setFiles] = useState<FileHistory[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null); 
   
-  // NOUVEAU : États d'édition
+  // États d'édition
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
@@ -47,6 +50,9 @@ export default function Home() {
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [input, setInput] = useState("");
   const [isLoadingChat, setIsLoadingChat] = useState(false);
+  
+  // NOUVEAU: État pour le chargement du PDF
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -84,7 +90,6 @@ export default function Home() {
     }
   };
 
-  // NOUVEAU : Renommer le fichier dans Supabase
   const handleRename = async (fileId: string) => {
     if (!editName.trim()) {
       setEditingFileId(null);
@@ -104,7 +109,6 @@ export default function Home() {
     setEditingFileId(null);
   };
 
-  // NOUVEAU : Activer le mode édition
   const startEditing = (f: FileHistory, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditName(f.file_name);
@@ -116,7 +120,6 @@ export default function Home() {
     router.push('/login');
   };
 
-  // MODIFIÉ : Accepte tout type de fichier
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -141,6 +144,75 @@ export default function Home() {
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // NOUVEAU : Fonction d'exportation PDF avec Synthèse
+  const handleExportPDF = async () => {
+    if (messages.length === 0 || isExporting) return;
+    setIsExporting(true);
+
+    try {
+      // 1. Demander la synthèse à l'API
+      const res = await fetch("/api/synthesize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+      });
+      const { summary } = await res.json();
+
+      // 2. Créer le document PDF
+      const doc = new jsPDF();
+      const fileName = selectedFileId ? files.find(f => f.file_id === selectedFileId)?.file_name : "Vue globale";
+
+      // Design du titre
+      doc.setFontSize(18);
+      doc.setTextColor(40);
+      doc.text("Compte-rendu DocuChat", 14, 22);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Document : ${fileName}`, 14, 30);
+      doc.text(`Date : ${new Date().toLocaleDateString()}`, 14, 35);
+
+      // Bloc de synthèse
+      doc.setFontSize(14);
+      doc.setTextColor(0, 102, 204);
+      doc.text("RÉSUMÉ DÉCISIONNEL (IA)", 14, 50);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(50);
+      const splitSummary = doc.splitTextToSize(summary || "Synthèse indisponible.", 180);
+      doc.text(splitSummary, 14, 60);
+
+      // Bloc d'historique avec tableau
+      const startY = 60 + (splitSummary.length * 5) + 10;
+      doc.setFontSize(14);
+      doc.setTextColor(0, 102, 204);
+      doc.text("DÉTAIL DES ÉCHANGES", 14, startY);
+
+      const tableData = messages.map(m => [
+        m.role === 'user' ? 'UTILISATEUR' : 'DOCUCHAT AI',
+        m.text
+      ]);
+
+      autoTable(doc, {
+        startY: startY + 5,
+        head: [['Intervenant', 'Message']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [0, 102, 204] },
+        styles: { fontSize: 9, cellPadding: 4 },
+        columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 'auto' } }
+      });
+
+      // Téléchargement
+      doc.save(`DocuChat_Export_${new Date().getTime()}.pdf`);
+    } catch (error) {
+      console.error("Erreur Export:", error);
+      alert("Erreur lors de la génération du PDF.");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -206,7 +278,6 @@ export default function Home() {
           <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1 font-bold">Vibe Coder Edition</p>
         </div>
 
-        {/* MODIFIÉ : L'attribut accept a été retiré */}
         <button 
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
@@ -227,7 +298,6 @@ export default function Home() {
             <Globe className="w-4 h-4" /> Vue globale
           </button>
 
-          {/* MODIFIÉ : Interface de liste avec mode édition */}
           {files.map((f) => (
             <div key={f.file_id} className="group relative flex items-center w-full">
               {editingFileId === f.file_id ? (
@@ -303,7 +373,21 @@ export default function Home() {
               <p className="text-[10px] text-neutral-500 font-medium">Modèle Gemini 3.1 Flash Lite</p>
             </div>
           </div>
-          {uploadMessage && <span className="text-[11px] font-bold text-blue-400 px-3 py-1 bg-blue-400/10 rounded-full animate-pulse border border-blue-400/20">{uploadMessage}</span>}
+          
+          <div className="flex items-center gap-4">
+            {/* NOUVEAU : Bouton d'exportation PDF */}
+            {messages.length > 0 && (
+              <button 
+                onClick={handleExportPDF}
+                disabled={isExporting}
+                className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold rounded-xl border border-neutral-700 transition-all disabled:opacity-50 shadow-lg"
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isExporting ? "Génération PDF..." : "Exporter Synthèse"}
+              </button>
+            )}
+            {uploadMessage && <span className="text-[11px] font-bold text-blue-400 px-3 py-1 bg-blue-400/10 rounded-full animate-pulse border border-blue-400/20">{uploadMessage}</span>}
+          </div>
         </header>
 
         <div ref={chatContainerRef} className="flex-1 p-8 overflow-y-auto space-y-6">

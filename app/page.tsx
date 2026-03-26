@@ -174,7 +174,7 @@ export default function Home() {
     router.push('/login');
   };
 
-  // MODIFIÉ : Envoi du spaceId lors du téléversement multiple
+  // MODIFIÉ : Gestion stricte des erreurs d'upload pour le débogage
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.target.files || []);
     if (selectedFiles.length === 0) return;
@@ -182,19 +182,38 @@ export default function Home() {
     setIsUploading(true);
     setUploadMessage(`Analyse de ${selectedFiles.length} fichier(s)...`);
 
+    let hasError = false;
+    let errorMessage = "";
+
     try {
       for (const file of selectedFiles) {
         const formData = new FormData();
         formData.append("file", file);
-        if (selectedSpaceId) formData.append("spaceId", selectedSpaceId); // NOUVEAU
+        if (selectedSpaceId) formData.append("spaceId", selectedSpaceId);
         
         const response = await fetch("/api/upload", { method: "POST", body: formData });
+        
         if (!response.ok) {
-          console.error(`Erreur d'upload pour ${file.name}`);
+          hasError = true;
+          // On tente de lire le message d'erreur renvoyé par le backend
+          const errText = await response.text();
+          try {
+            const errJson = JSON.parse(errText);
+            errorMessage = errJson.error || `Erreur pour le fichier ${file.name}`;
+          } catch {
+            // Si Vercel coupe la requête (ex: fichier trop lourd > 4.5MB), ce n'est pas du JSON
+            errorMessage = `Le fichier ${file.name} est trop lourd ou invalide.`;
+          }
+          break; // On stoppe la boucle au premier échec
         }
       }
-      setUploadMessage("✅ Fichiers mémorisés !");
-      fetchHistory(); 
+      
+      if (hasError) {
+        setUploadMessage(`❌ ${errorMessage}`);
+      } else {
+        setUploadMessage("✅ Fichiers mémorisés !");
+        fetchHistory(); 
+      }
     } catch (e) {
       setUploadMessage("❌ Erreur serveur lors de l'envoi");
     } finally {

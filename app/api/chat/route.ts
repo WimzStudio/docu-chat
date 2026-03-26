@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // 2. RÉCUPÉRATION DES WORKSPACES LIÉS À CETTE CONVERSATION
+    // 2. RÉCUPÉRATION DES WORKSPACES LIÉS
     const { data: linkedSpaces } = await supabase
       .from('conversation_spaces')
       .select('space_id')
@@ -56,23 +56,19 @@ export async function POST(request: Request) {
     
     const queryEmbedding = normalize(embRes.embedding.values);
 
-    // On appelle la nouvelle fonction RPC avec la LISTE des IDs
     const { data: documents, error: rpcError } = await supabase.rpc('match_documents', {
       query_embedding: queryEmbedding,
-      match_threshold: 0.3,
-      match_count: 5,
+      match_threshold: 0.1, // MODIFIÉ : Seuil de tolérance très bas pour ratisser large
+      match_count: 50,      // MODIFIÉ : On passe de 5 à 50 extraits récupérés !
       filter_user_id: user.id,
-      // On passe maintenant le tableau complet des IDs autorisés
       filter_space_ids: allowedSpaceIds.length > 0 ? allowedSpaceIds : null 
     });
 
-    if (rpcError) {
-      console.error("Erreur RPC Match Documents:", rpcError);
-    }
+    if (rpcError) console.error("Erreur RPC Match Documents:", rpcError);
 
     const contextText = documents?.length 
       ? documents.map((doc: any) => doc.content).join("\n---\n") 
-      : "Aucun contexte trouvé.";
+      : "Aucun contexte documentaire n'a pu être chargé.";
 
     // 4. CHAT AVEC GEMINI
     const formattedHistory = history.map((msg: any) => ({
@@ -82,11 +78,12 @@ export async function POST(request: Request) {
 
     const chatModel = genAI.getGenerativeModel({ 
       model: "gemini-3.1-flash-lite-preview",
-      systemInstruction: "Tu es DocuChat. Réponds en utilisant UNIQUEMENT le contexte fourni. Si tu ne sais pas, dis-le."
+      // MODIFIÉ : Ajout d'une consigne stricte sur l'exhaustivité
+      systemInstruction: "Tu es DocuChat. Réponds en utilisant le contexte fourni. Si on te demande de lister des éléments ou des documents, sois absolument exhaustif et cite tout ce qui est présent dans le contexte, sans rien omettre."
     });
     
     const chatSession = chatModel.startChat({ history: formattedHistory });
-    const prompt = `[CONTEXTE] : ${contextText}\n\n[QUESTION] : ${message}`;
+    const prompt = `[CONTEXTE COMPLET] : \n${contextText}\n\n[QUESTION] : ${message}`;
 
     const result = await chatSession.sendMessageStream(prompt);
 
@@ -101,7 +98,7 @@ export async function POST(request: Request) {
             controller.enqueue(encoder.encode(chunkText));
           }
           
-          // 5. SAUVEGARDE DE LA RÉPONSE AI UNE FOIS LE STREAM FINI
+          // 5. SAUVEGARDE DE LA RÉPONSE
           if (conversationId) {
             await supabase.from('chat_messages').insert({
               conversation_id: conversationId,

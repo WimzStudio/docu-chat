@@ -129,6 +129,20 @@ export default function Home() {
     }
   };
 
+  const deleteSpace = async (spaceId: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer ce Workspace ? Les documents associés pourraient être perdus.")) return;
+    const { error } = await supabase.from('spaces').delete().eq('id', spaceId);
+    if (!error) {
+      setSpaces(spaces.filter(s => s.id !== spaceId));
+      if (selectedSpaceId === spaceId) {
+        setSelectedSpaceId(null);
+      }
+    } else {
+      alert("Erreur lors de la suppression du Workspace.");
+      console.error(error);
+    }
+  };
+
   const fetchHistory = async () => {
     let query = supabase.from('documents').select('file_id, file_name, space_id').order('id', { ascending: false });
     if (selectedSpaceId) {
@@ -495,17 +509,28 @@ export default function Home() {
               </div>
             )}
 
-            <div className="relative">
-              <select 
-                value={selectedSpaceId || ""} 
-                onChange={(e) => setSelectedSpaceId(e.target.value || null)}
-                className="w-full bg-neutral-950 text-neutral-300 text-xs font-medium rounded-xl px-3 py-2.5 outline-none border border-neutral-800 focus:border-blue-500/50 appearance-none cursor-pointer"
-              >
-                <option value="">Général (Sans espace)</option>
-                {spaces.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+            <div className="flex gap-2 items-center relative">
+              <div className="relative flex-1">
+                <select 
+                  value={selectedSpaceId || ""} 
+                  onChange={(e) => setSelectedSpaceId(e.target.value || null)}
+                  className="w-full bg-neutral-950 text-neutral-300 text-xs font-medium rounded-xl px-3 py-2.5 outline-none border border-neutral-800 focus:border-blue-500/50 appearance-none cursor-pointer"
+                >
+                  <option value="">Général (Sans espace)</option>
+                  {spaces.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              {selectedSpaceId && (
+                <button 
+                  onClick={() => deleteSpace(selectedSpaceId)} 
+                  className="p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-xl border border-transparent hover:border-red-500/30 transition-all shrink-0" 
+                  title="Supprimer ce Workspace"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
 

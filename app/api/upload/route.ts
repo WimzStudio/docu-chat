@@ -13,6 +13,45 @@ function normalize(vector: number[]) {
   return vector.map(val => val / magnitude);
 }
 
+function chunkText(text: string, maxChunkSize = 1000, overlap = 200): string[] {
+  const paragraphs = text.split(/\n\s*\n/);
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  for (const para of paragraphs) {
+    if (currentChunk.length + para.length > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      const overlapText = currentChunk.slice(-overlap);
+      const overlapStart = overlapText.indexOf(' ');
+      currentChunk = overlapStart !== -1 ? overlapText.slice(overlapStart) : overlapText;
+      currentChunk += "\n\n" + para;
+    } else {
+      currentChunk += (currentChunk ? "\n\n" : "") + para;
+    }
+  }
+  
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks.flatMap(chunk => {
+    if (chunk.length <= maxChunkSize) return [chunk];
+    const sentences = chunk.match(/[^.!?]+[.!?]+/g) || [chunk];
+    const subChunks: string[] = [];
+    let temp = "";
+    for(const sent of sentences) {
+        if(temp.length + sent.length > maxChunkSize && temp.length > 0) {
+            subChunks.push(temp.trim());
+            temp = sent;
+        } else {
+            temp += (temp ? " " : "") + sent;
+        }
+    }
+    if(temp.trim()) subChunks.push(temp.trim());
+    return subChunks;
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -22,7 +61,7 @@ export async function POST(request: Request) {
       {
         cookies: {
           getAll() { return cookieStore.getAll() },
-          setAll(payload) { payload.forEach((c) => cookieStore.set(c.name, c.value, c.options)) },
+          setAll(payload: any[]) { payload.forEach((c: any) => cookieStore.set(c.name, c.value, c.options)) },
         },
       }
     );
@@ -83,7 +122,7 @@ export async function POST(request: Request) {
       const base64Data = safeBuffer.toString("base64");
       
       const result = await fallbackModel.generateContent([
-        "Analyse ce document (OCR) et retranscris tout son contenu textuel proprement. Sois précis sur les chiffres.",
+        "Analyse ce document (OCR) et extrais tout son contenu textuel au format Markdown structuré (utilise # pour les titres, - pour les listes, etc.). Conserve l'intégralité du texte et sois très précis sur les chiffres et les tableaux.",
         { inlineData: { data: base64Data, mimeType: mimeType || "application/pdf" } }
       ]);
       fullText = result.response.text();
@@ -94,7 +133,7 @@ export async function POST(request: Request) {
     }
 
     // --- ✂️ DÉCOUPAGE ET MÉMORISATION ---
-    const chunks = fullText.match(/[\s\S]{1,1000}/g) || [];
+    const chunks = chunkText(fullText, 1000, 200);
     const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-2-preview" });
 
     for (const chunk of chunks) {

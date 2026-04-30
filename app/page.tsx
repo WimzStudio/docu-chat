@@ -11,7 +11,6 @@ import {
   Send, 
   Trash2, 
   FileText, 
-  Globe, 
   LogOut, 
   Loader2,
   User,
@@ -21,7 +20,12 @@ import {
   Check,
   Download,
   Folder,
-  Layers
+  Layers,
+  Key,
+  Copy,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface FileHistory {
@@ -39,6 +43,14 @@ interface Conversation {
   id: string;
   title: string;
   created_at: string;
+}
+
+interface ApiKey {
+  id: string;
+  label: string;
+  api_key: string;
+  created_at: string;
+  space_id: string;
 }
 
 export default function Home() {
@@ -78,6 +90,13 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // --- ÉTATS : GESTION DES CLÉS API ---
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [showApiKeys, setShowApiKeys] = useState(false);
+  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
+  const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
   // --- INITIALISATION ---
   useEffect(() => {
@@ -218,6 +237,50 @@ export default function Home() {
     const { data } = await supabase.from('conversations').select('*').order('created_at', { ascending: false });
     if (data) setConversations(data);
   };
+
+  // --- LOGIQUE : GESTION DES CLÉS API ---
+  const fetchApiKeys = async () => {
+    if (!selectedSpaceId) return;
+    const res = await fetch(`/api/public/keys?spaceId=${selectedSpaceId}`);
+    if (res.ok) setApiKeys(await res.json());
+  };
+
+  const generateApiKey = async () => {
+    if (!selectedSpaceId) return;
+    setIsGeneratingKey(true);
+    try {
+      const res = await fetch('/api/public/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spaceId: selectedSpaceId, label: newKeyLabel || 'GlowBot' }),
+      });
+      const newKey = await res.json();
+      setApiKeys(prev => [newKey, ...prev]);
+      setNewKeyLabel("");
+    } finally {
+      setIsGeneratingKey(false);
+    }
+  };
+
+  const revokeApiKey = async (keyId: string) => {
+    if (!confirm('Révoquer cette clé ? Les applications qui l\'utilisent ne pourront plus se connecter.')) return;
+    await fetch('/api/public/keys', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyId }),
+    });
+    setApiKeys(prev => prev.filter(k => k.id !== keyId));
+  };
+
+  const copyKey = (key: ApiKey) => {
+    navigator.clipboard.writeText(key.api_key);
+    setCopiedKeyId(key.id);
+    setTimeout(() => setCopiedKeyId(null), 2000);
+  };
+
+  useEffect(() => {
+    if (showApiKeys && selectedSpaceId) fetchApiKeys();
+  }, [showApiKeys, selectedSpaceId]);
 
   const loadConversation = async (convId: string) => {
     setActiveConvId(convId);
@@ -558,6 +621,65 @@ export default function Home() {
             ))}
           </div>
         </div>
+
+        {/* BLOC : GESTION DES CLÉS API */}
+        {selectedSpaceId && (
+          <div className="pt-4 border-t border-neutral-800 mb-4">
+            <button
+              onClick={() => setShowApiKeys(!showApiKeys)}
+              className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-neutral-400 hover:text-neutral-200 font-bold uppercase tracking-tighter transition-colors rounded-xl hover:bg-neutral-800/40"
+            >
+              <span className="flex items-center gap-2"><Key className="w-3.5 h-3.5" /> Clés API</span>
+              {showApiKeys ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {showApiKeys && (
+              <div className="mt-3 space-y-3 px-1">
+                {/* Générer une nouvelle clé */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newKeyLabel}
+                    onChange={e => setNewKeyLabel(e.target.value)}
+                    placeholder="Label (ex: GlowBot)"
+                    className="flex-1 bg-neutral-950 text-xs px-3 py-2 rounded-xl border border-neutral-700 outline-none text-white focus:border-blue-500 transition-all"
+                    onKeyDown={e => e.key === 'Enter' && generateApiKey()}
+                  />
+                  <button
+                    onClick={generateApiKey}
+                    disabled={isGeneratingKey}
+                    className="p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl transition-all"
+                    title="Générer une clé"
+                  >
+                    {isGeneratingKey ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+
+                {/* Liste des clés existantes */}
+                {apiKeys.length === 0 && (
+                  <p className="text-[10px] text-neutral-600 px-1">Aucune clé générée pour ce workspace.</p>
+                )}
+                {apiKeys.map(k => (
+                  <div key={k.id} className="bg-neutral-900/60 rounded-xl border border-neutral-800 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-neutral-300">{k.label}</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => copyKey(k)} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded-md transition-colors" title="Copier la clé">
+                          {copiedKeyId === k.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                        <button onClick={() => revokeApiKey(k.id)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-md transition-colors" title="Révoquer">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <code className="block text-[9px] text-neutral-500 bg-neutral-950 px-2 py-1.5 rounded-lg font-mono break-all">{k.api_key}</code>
+                    <p className="text-[9px] text-neutral-700">{new Date(k.created_at).toLocaleDateString('fr-FR')}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="pt-6 mt-auto border-t border-neutral-800">
           <div className="flex items-center gap-3 mb-4 px-2">

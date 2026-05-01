@@ -132,6 +132,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Contenu illisible." }, { status: 400 });
     }
 
+    // Nettoyage du texte pour enlever les caractères nuls (erreur PostgreSQL 22P05)
+    fullText = fullText.replace(/\0/g, '');
+
     // --- ✂️ DÉCOUPAGE ET MÉMORISATION ---
     const chunks = chunkText(fullText, 1000, 200);
     const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-2-preview" });

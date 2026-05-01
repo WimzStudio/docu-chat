@@ -163,7 +163,8 @@ export default function Home() {
   };
 
   const fetchHistory = async () => {
-    let query = supabase.from('documents').select('file_id, file_name, space_id').order('id', { ascending: false });
+    // On interroge la vue 'unique_documents' pour avoir un seul résultat par fichier
+    let query = supabase.from('unique_documents').select('file_id, file_name, space_id').order('last_chunk_id', { ascending: false });
     if (selectedSpaceId) {
       query = query.eq('space_id', selectedSpaceId);
     } else {
@@ -171,8 +172,7 @@ export default function Home() {
     }
     const { data } = await query;
     if (data) {
-      const uniqueFiles = data.filter((v, i, a) => a.findIndex(t => t.file_id === v.file_id) === i);
-      setFiles(uniqueFiles);
+      setFiles(data);
     }
   };
 
